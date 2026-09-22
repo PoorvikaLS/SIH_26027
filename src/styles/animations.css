@@ -1,0 +1,13 @@
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(.82); opacity: .65; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card, .nav-item, .primary-button, .secondary-button {
+  animation: slideUp .28s ease both;
+}
