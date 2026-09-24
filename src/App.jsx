@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
 import "./App.css";
+import blocks from "./data/blocks";
+import trains from "./data/trains";
+import tasks from "./data/tasks";
+import BlockCard from "./components/BlockCard";
+import Timeline from "./components/Timeline";
+import RailwayMap from "./components/RailwayMap";
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: "▦" },
@@ -10,12 +16,7 @@ const navItems = [
   { id: "analytics", label: "Analytics", icon: "⌁" },
 ];
 
-const blockPlans = [
-  { id: "BLK-2041", corridor: "Mysuru – Bengaluru", department: "Engineering", activity: "Track geometry inspection", start: "10:30", end: "12:00", priority: "High", status: "Approved" },
-  { id: "BLK-2042", corridor: "Bengaluru – Hassan", department: "S&T", activity: "Signal relay maintenance", start: "13:00", end: "14:30", priority: "Critical", status: "Pending" },
-  { id: "BLK-2043", corridor: "Mysuru – Hassan", department: "Traction", activity: "OHE isolator replacement", start: "15:00", end: "17:00", priority: "Medium", status: "Approved" },
-  { id: "BLK-2044", corridor: "Bengaluru – Tumakuru", department: "Engineering", activity: "Rail joint renewal", start: "22:00", end: "01:00", priority: "High", status: "Scheduled" },
-];
+const blockPlans = blocks;
 
 const assets = [
   { name: "Track Section A-17", type: "Track", availability: 98.7, state: "Available" },
@@ -189,7 +190,8 @@ function App() {
             />
           )}
 
-          {active !== "dashboard" && (
+          {active === "blocks" && <BlockPlanner notify={notify} />}
+          {active !== "dashboard" && active !== "blocks" && (
             <SectionPage
               title={pageTitle}
               active={active}
@@ -206,12 +208,60 @@ function App() {
   );
 }
 
+function BlockPlanner({ notify }) {
+  const [selected, setSelected] = useState(null);
+  const [date, setDate] = useState("2026-09-24");
+  const [week, setWeek] = useState("all");
+  const [section, setSection] = useState("All Sections");
+  const [department, setDepartment] = useState("All Departments");
+  const [priority, setPriority] = useState("All Priorities");
+  const [status, setStatus] = useState("All Statuses");
+  const [tab, setTab] = useState("operations");
+  const sections = [...new Set(blocks.map((b) => b.section))];
+  const filtered = useMemo(() => blocks.filter((b) =>
+    (week === "all" ? b.date === date : true) &&
+    (section === "All Sections" || b.section === section) &&
+    (department === "All Departments" || b.departments.includes(department)) &&
+    (priority === "All Priorities" || b.priority === priority) &&
+    (status === "All Statuses" || b.status === status)
+  ), [date, week, section, department, priority, status]);
+  const filteredTasks = tasks.filter((t) => filtered.some((b) => b.taskIds.includes(t.id)));
+  const conflicts = filtered.filter((b) => trains.some((t) => t.section === b.section && t.time >= b.start && t.time < b.end));
+  const taskList = (block) => tasks.filter((t) => block.taskIds.includes(t.id));
+  return <div className="planner-page">
+    <section className="planner-intro"><div><div className="eyebrow">OPERATIONS CONTROL · SOUTH WESTERN ZONE</div><h2>Block Planning</h2><p>Coordinate maintenance possessions with train movements across the network.</p></div><button className="primary-button" onClick={() => notify("New block request form is ready for Control Office review.")}>＋ Request a block</button></section>
+    <section className="planner-stats"><div><small>VISIBLE BLOCKS</small><strong>{filtered.length}</strong></div><div><small>MAINTENANCE TASKS</small><strong>{filteredTasks.length}</strong></div><div className={conflicts.length ? "stat-alert" : ""}><small>TRAFFIC CONFLICTS</small><strong>{conflicts.length}</strong></div><div><small>DEPARTMENTS COORDINATED</small><strong>{new Set(filtered.flatMap((b) => b.departments)).size}</strong></div></section>
+    <section className="card planner-filters"><div className="planner-filter-heading"><div><strong>Plan filters</strong><small>Refine block schedule and traffic windows</small></div><button className="text-button" onClick={() => { setDate("2026-09-24"); setWeek("all"); setSection("All Sections"); setDepartment("All Departments"); setPriority("All Priorities"); setStatus("All Statuses"); }}>Reset filters</button></div><div className="planner-filter-controls">
+      <label>Date<input type="date" value={date} onChange={(e) => { setDate(e.target.value); setWeek("all"); }} /></label>
+      <label>Week<select value={week} onChange={(e) => setWeek(e.target.value)}><option value="all">Selected day</option><option value="week">This week</option></select></label>
+      <label>Section<select value={section} onChange={(e) => setSection(e.target.value)}><option>All Sections</option>{sections.map((s) => <option key={s}>{s}</option>)}</select></label>
+      <label>Department<select value={department} onChange={(e) => setDepartment(e.target.value)}><option>All Departments</option>{["Engineering", "S&T", "Traction"].map((x) => <option key={x}>{x}</option>)}</select></label>
+      <label>Priority<select value={priority} onChange={(e) => setPriority(e.target.value)}><option>All Priorities</option>{["Critical", "High", "Medium", "Low"].map((x) => <option key={x}>{x}</option>)}</select></label>
+      <label>Status<select value={status} onChange={(e) => setStatus(e.target.value)}><option>All Statuses</option>{["Approved", "Pending", "Scheduled"].map((x) => <option key={x}>{x}</option>)}</select></label>
+    </div></section>
+    <div className="planner-tabs"><button className={tab === "operations" ? "selected" : ""} onClick={() => setTab("operations")}>Block operations</button><button className={tab === "traffic" ? "selected" : ""} onClick={() => setTab("traffic")}>Train traffic <span>{trains.length}</span></button><button className={tab === "network" ? "selected" : ""} onClick={() => setTab("network")}>Railway network</button></div>
+    {tab === "operations" && <><section className="card timeline-card"><CardHeader title="Block & train timeline" subtitle="24-hour view · click any maintenance block for operational detail"><span className="ai-chip">● LIVE SCHEDULE</span></CardHeader><Timeline blocks={filtered} onSelect={setSelected} day={week === "week" ? "This week" : date} /></section><div className="planner-lower"><section className="card task-panel"><CardHeader title="Maintenance tasks" subtitle={`${filteredTasks.length} tasks in filtered plan`} /><div className="task-list">{filteredTasks.map((t) => <div className="task-row" key={t.id}><span className="task-glyph">⌁</span><div><strong>{t.title}</strong><small>{t.id} · {t.asset} · {t.section}</small></div><StatusBadge value={t.priority} /><small className="task-dept">{t.department}</small></div>)}{!filteredTasks.length && <div className="empty-state">No tasks match these filters.</div>}</div></section><section className="card conflict-panel"><CardHeader title="Traffic conflicts" subtitle="Train movements intersecting block windows"/><div className="conflict-list">{conflicts.map((b) => trains.filter((t) => t.section === b.section && t.time >= b.start && t.time < b.end).map((t) => <div className="conflict-item" key={b.id+t.id}><span>!</span><div><strong>{t.id} · {t.name}</strong><small>{b.section} · {t.time} during {b.id}</small></div><StatusBadge value="Conflict" /></div>))}{!conflicts.length && <div className="clear-conflict">✓ No train movements intersect the visible block windows.</div>}</div></section></div><section className="block-card-grid">{filtered.map((b) => <BlockCard key={b.id} block={b} tasks={taskList(b)} onClick={setSelected} />)}{!filtered.length && <div className="card empty-state">No blocks match these filters.</div>}</section></>}
+    {tab === "traffic" && <TrainTraffic blocks={filtered} />}
+    {tab === "network" && <section className="card network-card"><CardHeader title="Railway network" subtitle="Simplified section status and critical infrastructure"/><RailwayMap blocks={filtered} onSelect={(name) => { setSection(name); setTab("operations"); }} /></section>}
+    {selected && <BlockDetails block={selected} tasks={taskList(selected)} onClose={() => setSelected(null)} />}
+  </div>;
+}
+
+function TrainTraffic({ blocks: visibleBlocks }) {
+  return <div className="traffic-page-grid"><section className="card"><CardHeader title="Train movements" subtitle="Scheduled passenger and goods services"/><div className="table-wrap"><table><thead><tr><th>TRAIN</th><th>TYPE</th><th>SECTION</th><th>TIME</th><th>INTENSITY</th><th>STATUS</th></tr></thead><tbody>{trains.map((t) => <tr key={t.id}><td><strong>{t.id}</strong><div className="train-name">{t.name}</div></td><td><span className={`train-type ${t.type.toLowerCase()}`}>{t.type}</span></td><td>{t.section}</td><td>{t.time} <span className="muted">{t.direction}</span></td><td><StatusBadge value={t.intensity} /></td><td><StatusBadge value={t.status} /></td></tr>)}</tbody></table></div></section><section className="card forecast-card"><CardHeader title="Goods train forecast" subtitle="Freight movements in the operating window"/><div className="forecast-highlight"><strong>2</strong><span>goods services forecast</span><small>12:50 Hassan – Mangaluru · 23:10 Bengaluru – Tumakuru</small></div><div className="forecast-note"><span>✦</span><p>Iron Ore Special approaches the planned maintenance window on Hassan – Mangaluru. Confirm dispatch clearance before the 11:30 block.</p></div></section><section className="card timeline-card traffic-timeline"><CardHeader title="Train & possession timeline" subtitle="Train markers compared with maintenance windows"/><Timeline blocks={visibleBlocks} onSelect={() => {}} /></section></div>;
+}
+
+function BlockDetails({ block, tasks: blockTasks, onClose }) {
+  const duration = (() => { const [sh, sm] = block.start.split(":").map(Number); const [eh, em] = block.end.split(":").map(Number); return ((eh * 60 + em - sh * 60 - sm + 1440) % 1440) / 60; })();
+  return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal block-detail-modal" onMouseDown={(e) => e.stopPropagation()}><div className="modal-header"><div><span className="eyebrow">BLOCK DETAILS · {block.id}</span><h3>{block.activity}</h3><p>{block.section}</p></div><button className="icon-button" onClick={onClose}>×</button></div><div className="detail-facts"><div><small>START TIME</small><strong>{block.start}</strong></div><div><small>END TIME</small><strong>{block.end}</strong></div><div><small>DURATION</small><strong>{duration} hours</strong></div></div><div className="detail-row"><span>Departments</span><strong>{block.departments.join(" · ")}</strong></div><div className="detail-row"><span>Priority / Status</span><strong><StatusBadge value={block.priority} /> <StatusBadge value={block.status} /></strong></div><div className="detail-section"><strong>Maintenance tasks</strong>{blockTasks.map((t) => <div className="detail-task" key={t.id}><span>✓</span><div><b>{t.title}</b><small>{t.id} · {t.asset} · {t.department}</small></div></div>)}</div><div className="detail-insight"><span>✦ AI RECOMMENDATION</span><p>{block.recommendation}</p></div><div className="detail-section why-section"><strong>Why this block?</strong><p>{block.why}</p></div></div></div>;
+}
+
 function Dashboard({ filteredBlocks, query, setQuery, department, setDepartment, notify, setActive }) {
   return (
     <>
       <section className="welcome-row">
         <div>
-          <p className="eyebrow">TUESDAY • 22 SEPTEMBER 2026</p>
+          <p className="eyebrow">THURSDAY • 24 SEPTEMBER 2026</p>
           <h2>Good morning, Control Team</h2>
           <p className="muted">Here is the current network status and AI-assisted block outlook.</p>
         </div>
